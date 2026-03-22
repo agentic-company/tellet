@@ -1,0 +1,278 @@
+import fs from "fs-extra";
+import path from "path";
+import { fileURLToPath } from "url";
+
+interface AgentConfig {
+  id: string;
+  name: string;
+  role: string;
+  description: string;
+  systemPrompt: string;
+  model: string;
+}
+
+interface ScaffoldOptions {
+  company: {
+    name: string;
+    description: string;
+    industry: string;
+  };
+  agents: AgentConfig[];
+  infra: {
+    anthropicKey: string;
+    supabaseUrl: string;
+    supabaseKey: string;
+  };
+}
+
+export async function scaffoldProject(options: ScaffoldOptions): Promise<string> {
+  const { company, agents, infra } = options;
+
+  const slug = company.name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  const projectDir = path.resolve(process.cwd(), slug);
+
+  if (await fs.pathExists(projectDir)) {
+    throw new Error(`Directory "${slug}" already exists`);
+  }
+
+  // Copy template
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const templateDir = path.resolve(__dirname, "..", "..", "template");
+
+  if (await fs.pathExists(templateDir)) {
+    await fs.copy(templateDir, projectDir);
+  } else {
+    await fs.mkdirp(projectDir);
+  }
+
+  // Ensure directory structure
+  const dirs = [
+    "app/(site)",
+    "app/(dashboard)/dashboard",
+    "app/(dashboard)/agents",
+    "app/(dashboard)/conversations",
+    "app/(dashboard)/settings",
+    "app/api/chat",
+    "app/api/agents",
+    "app/login",
+    "agents",
+    "channels",
+    "components/chat",
+    "components/dashboard",
+    "components/ui",
+    "lib/engine",
+    "lib/providers",
+    "lib/storage",
+    "supabase/migrations",
+  ];
+
+  for (const dir of dirs) {
+    await fs.mkdirp(path.join(projectDir, dir));
+  }
+
+  // Write tellet.json
+  const telletConfig = {
+    $schema: "https://tellet.com/schema/v1.json",
+    version: "1.0.0",
+    company: {
+      name: company.name,
+      description: company.description,
+      industry: company.industry,
+    },
+    engine: "default",
+    llm: {
+      provider: "anthropic",
+      defaultModel: "claude-sonnet-4-6",
+      fallback: null,
+    },
+    agents: agents.map((a) => ({
+      id: a.id,
+      name: a.name,
+      role: a.role,
+      model: a.model,
+      channels: ["web_chat"],
+    })),
+    channels: {
+      web_chat: { enabled: true },
+      slack: { enabled: false },
+      email: { enabled: false },
+    },
+    storage: "supabase",
+    integrations: [],
+  };
+
+  await fs.writeJSON(path.join(projectDir, "tellet.json"), telletConfig, {
+    spaces: 2,
+  });
+
+  // Write .env.local
+  await fs.writeFile(
+    path.join(projectDir, ".env.local"),
+    [
+      `ANTHROPIC_API_KEY=${infra.anthropicKey}`,
+      `NEXT_PUBLIC_SUPABASE_URL=${infra.supabaseUrl}`,
+      `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${infra.supabaseKey}`,
+    ].join("\n") + "\n"
+  );
+
+  // Write agent files
+  for (const agent of agents) {
+    const agentFile = `import { defineAgent } from "@/lib/engine";
+
+export default defineAgent({
+  id: "${agent.id}",
+  name: "${agent.name}",
+  role: "${agent.role}",
+  model: "${agent.model}",
+  systemPrompt: ${JSON.stringify(agent.systemPrompt)},
+  channels: ["web_chat"],
+  tools: [],
+});
+`;
+    await fs.writeFile(
+      path.join(projectDir, "agents", `${agent.id}.ts`),
+      agentFile
+    );
+  }
+
+  // Write agents/index.ts (registry)
+  const imports = agents
+    .map((a) => `import ${a.id} from "./${a.id}.js";`)
+    .join("\n");
+  const exports = agents.map((a) => `  ${a.id}`).join(",\n");
+
+  await fs.writeFile(
+    path.join(projectDir, "agents", "index.ts"),
+    `${imports}\n\nexport const agents = {\n${exports},\n};\n`
+  );
+
+  // Write package.json
+  await fs.writeJSON(
+    path.join(projectDir, "package.json"),
+    {
+      name: slug,
+      version: "0.1.0",
+      private: true,
+      scripts: {
+        dev: "next dev",
+        build: "next build",
+        start: "next start",
+      },
+      dependencies: {
+        next: "^16.2.0",
+        react: "^19.2.0",
+        "react-dom": "^19.2.0",
+        "@anthropic-ai/sdk": "^0.80.0",
+        "@supabase/supabase-js": "^2.99.0",
+        "@supabase/ssr": "^0.9.0",
+        tailwindcss: "^4.0.0",
+        "framer-motion": "^12.0.0",
+        clsx: "^2.1.0",
+        "tailwind-merge": "^3.0.0",
+      },
+      devDependencies: {
+        typescript: "^5.0.0",
+        "@types/node": "^22.0.0",
+        "@types/react": "^19.0.0",
+      },
+    },
+    { spaces: 2 }
+  );
+
+  // Write DB migration
+  await fs.writeFile(
+    path.join(projectDir, "supabase", "migrations", "001_initial.sql"),
+    generateMigration(agents)
+  );
+
+  return projectDir;
+}
+
+function generateMigration(agents: AgentConfig[]): string {
+  const seedValues = agents
+    .map(
+      (a) =>
+        `('${a.id}', '${a.name}', '${a.role}', ${pgEscape(a.systemPrompt)}, '${a.model}', 'active', '{}')`
+    )
+    .join(",\n");
+
+  return `-- tellet schema
+create table agents (
+  id text primary key,
+  name text not null,
+  role text not null,
+  system_prompt text not null,
+  model text default 'claude-sonnet-4-6',
+  status text default 'active',
+  config jsonb default '{}',
+  created_at timestamptz default now()
+);
+
+create table conversations (
+  id uuid primary key default gen_random_uuid(),
+  agent_id text references agents(id),
+  channel text not null,
+  visitor_id text,
+  metadata jsonb default '{}',
+  created_at timestamptz default now()
+);
+
+create table messages (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id uuid references conversations(id) on delete cascade,
+  role text not null check (role in ('user', 'assistant')),
+  content text not null,
+  tokens_used integer default 0,
+  created_at timestamptz default now()
+);
+
+create table activity_log (
+  id uuid primary key default gen_random_uuid(),
+  agent_id text references agents(id),
+  action text not null,
+  summary text,
+  cost_usd numeric(10,4) default 0,
+  metadata jsonb default '{}',
+  created_at timestamptz default now()
+);
+
+-- Indexes
+create index idx_conv_agent on conversations(agent_id);
+create index idx_msg_conv on messages(conversation_id);
+create index idx_activity_agent on activity_log(agent_id);
+create index idx_activity_time on activity_log(created_at desc);
+
+-- RLS
+alter table agents enable row level security;
+alter table conversations enable row level security;
+alter table messages enable row level security;
+alter table activity_log enable row level security;
+
+create policy "auth_all" on agents for all to authenticated using (true) with check (true);
+create policy "auth_all" on conversations for all to authenticated using (true) with check (true);
+create policy "auth_all" on messages for all to authenticated using (true) with check (true);
+create policy "auth_all" on activity_log for all to authenticated using (true) with check (true);
+
+create policy "anon_read_agents" on agents for select to anon using (status = 'active');
+create policy "anon_insert_conv" on conversations for insert to anon with check (channel = 'web_chat');
+create policy "anon_insert_msg" on messages for insert to anon with check (true);
+create policy "anon_read_msg" on messages for select to anon using (true);
+
+-- Realtime
+alter publication supabase_realtime add table activity_log;
+alter publication supabase_realtime add table messages;
+
+-- Seed agents
+insert into agents (id, name, role, system_prompt, model, status, config) values
+${seedValues};
+`;
+}
+
+function pgEscape(str: string): string {
+  return "'" + str.replace(/'/g, "''") + "'";
+}
+
