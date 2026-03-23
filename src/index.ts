@@ -63,7 +63,7 @@ async function main() {
       {
         value: "enterprise",
         label: "Enterprise",
-        hint: "AWS / GCP — full infrastructure (coming soon)",
+        hint: "AWS CDK — auto-provision Lambda + RDS + CloudFront",
       },
     ],
   });
@@ -74,10 +74,6 @@ async function main() {
   }
 
   const tier = tierChoice as DeployTier;
-
-  if (tier === "enterprise") {
-    p.log.warn("Enterprise mode (AWS/GCP) is coming soon. Using Cloud mode for now.");
-  }
 
   // Step 3: Choose AI provider
   const providerChoice = await p.select({
@@ -247,9 +243,15 @@ async function main() {
     );
     supabaseUrl = supabase.url as string;
     supabaseKey = supabase.key as string;
-  } else {
+  } else if (tier === "cloud") {
     p.log.info(
       chalk.dim("Cloud mode: PostgreSQL runs in Docker. No Supabase needed.")
+    );
+  } else {
+    p.log.info(
+      `${chalk.bold("AWS Enterprise setup")}\n` +
+        `  ${chalk.dim("Requires:")} AWS CLI configured + CDK bootstrapped\n` +
+        `  ${chalk.dim("Cost:")} ~$5-15/mo (Lambda + RDS free tier)`
     );
   }
 
@@ -266,7 +268,7 @@ async function main() {
       agents: agents.agents,
       site: agents.site,
       provider,
-      tier: tier === "enterprise" ? "cloud" : tier,
+      tier,
       infra: {
         anthropicKey,
         openaiKey: provider === "openai" ? apiKey : undefined,
@@ -296,7 +298,7 @@ async function main() {
         "Your AI company is ready"
       );
       p.outro(`Deploy: ${chalk.cyan("vercel deploy")}`);
-    } else {
+    } else if (tier === "cloud") {
       p.note(
         [
           `cd ${slug}`,
@@ -318,6 +320,35 @@ async function main() {
       );
       p.outro(
         `Or deploy to ${chalk.cyan("Render")}, ${chalk.cyan("Fly.io")}, or any Docker host`
+      );
+    } else {
+      p.note(
+        [
+          `cd ${slug}`,
+          ``,
+          `${chalk.bold("Local development:")}`,
+          `docker compose up     ${chalk.dim("→ http://localhost:3000")}`,
+          ``,
+          `${chalk.bold("Deploy to AWS:")}`,
+          `cd infra`,
+          `npm install`,
+          `npx cdk bootstrap     ${chalk.dim("(first time only)")}`,
+          `npx cdk deploy        ${chalk.dim("→ CloudFront URL in output")}`,
+          ``,
+          `${chalk.bold("Update API keys:")}`,
+          `aws secretsmanager put-secret-value \\`,
+          `  --secret-id ${slug}/api-keys \\`,
+          `  --secret-string '{"ANTHROPIC_API_KEY":"sk-ant-..."}'`,
+          ``,
+          `Dashboard:    ${chalk.dim("/dashboard")}`,
+          `Orchestrator: ${chalk.dim("floating button in dashboard")}`,
+          `Agents:       ${chalk.dim(`${agents.agents.length} active`)}`,
+          `Est. cost:    ${chalk.dim("$5-15/mo")}`,
+        ].join("\n"),
+        "Your AI company is ready (AWS)"
+      );
+      p.outro(
+        `Run ${chalk.cyan("cd infra && npx cdk deploy")} to provision AWS infrastructure`
       );
     }
   } catch (err) {

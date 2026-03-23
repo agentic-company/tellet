@@ -63,6 +63,18 @@ export async function scaffoldProject(options: ScaffoldOptions): Promise<string>
     await fs.mkdirp(projectDir);
   }
 
+  // Remove infra/ if not enterprise tier
+  if (tier !== "enterprise") {
+    await fs.remove(path.join(projectDir, "infra"));
+  }
+
+  // Remove Docker files if quickstart tier
+  if (tier === "quickstart") {
+    await fs.remove(path.join(projectDir, "Dockerfile"));
+    await fs.remove(path.join(projectDir, "docker-compose.yml"));
+    await fs.remove(path.join(projectDir, "railway.toml"));
+  }
+
   // Ensure directory structure
   const dirs = [
     "app/(site)",
@@ -144,10 +156,15 @@ export async function scaffoldProject(options: ScaffoldOptions): Promise<string>
       `NEXT_PUBLIC_SUPABASE_URL=${infra.supabaseUrl}`,
       `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${infra.supabaseKey}`
     );
-  } else {
+  } else if (tier === "cloud") {
     envLines.push(
       `DATABASE_URL=postgresql://tellet:tellet@localhost:5432/tellet`,
       `# For Railway: use the DATABASE_URL from Railway dashboard`
+    );
+  } else {
+    envLines.push(
+      `DATABASE_URL=postgresql://tellet:tellet@localhost:5432/tellet`,
+      `# AWS: CDK sets this automatically via Lambda environment`
     );
   }
   const envFileName = tier === "cloud" ? ".env" : ".env.local";
