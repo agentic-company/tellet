@@ -17,6 +17,30 @@ async function main() {
 
   p.intro(chalk.bgHex("#8b5cf6").white(" @tellet/create "));
 
+  // Step 0: New or Connect
+  const modeChoice = await p.select({
+    message: "What would you like to do?",
+    options: [
+      {
+        value: "new",
+        label: "New",
+        hint: "Build a new AI company from scratch",
+      },
+      {
+        value: "connect",
+        label: "Connect",
+        hint: "Add AI agents to your existing business",
+      },
+    ],
+  });
+
+  if (p.isCancel(modeChoice)) {
+    p.cancel("Setup cancelled.");
+    process.exit(0);
+  }
+
+  const mode = modeChoice as "new" | "connect";
+
   // Step 1: Company info
   const company = await p.group(
     {
@@ -188,7 +212,7 @@ async function main() {
     console.log();
   }
 
-  if (agents.site) {
+  if (agents.site && mode === "new") {
     p.log.info(chalk.bold("Your website:"));
     console.log(`  ${chalk.hex("#f59e0b")(agents.site.tagline)}`);
     console.log(`  ${chalk.dim(agents.site.subtitle)}`);
@@ -205,7 +229,19 @@ async function main() {
     process.exit(0);
   }
 
-  // Step 7: Infrastructure setup (tier-dependent)
+  // Step 7a: Connect mode — website URL for KB
+  let websiteUrl = "";
+  if (mode === "connect") {
+    const urlInput = await p.text({
+      message: "Your existing website URL (for Knowledge Base crawling):",
+      placeholder: "https://my-business.com",
+    });
+    if (!p.isCancel(urlInput) && urlInput) {
+      websiteUrl = urlInput as string;
+    }
+  }
+
+  // Step 7b: Infrastructure setup (tier-dependent)
   let supabaseUrl = "";
   let supabaseKey = "";
 
@@ -269,6 +305,8 @@ async function main() {
       site: agents.site,
       provider,
       tier,
+      mode,
+      websiteUrl,
       infra: {
         anthropicKey,
         openaiKey: provider === "openai" ? apiKey : undefined,
@@ -284,6 +322,16 @@ async function main() {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "");
 
+    const widgetSnippet = mode === "connect"
+      ? [
+          ``,
+          `${chalk.bold("Embed in your existing site:")}`,
+          `${chalk.cyan('<script src="https://YOUR_URL/widget.js"')}`,
+          `${chalk.cyan('  data-agent="' + agents.agents[0].id + '"')}`,
+          `${chalk.cyan('  data-api="https://YOUR_URL"></script>')}`,
+        ]
+      : [];
+
     if (tier === "quickstart") {
       p.note(
         [
@@ -294,8 +342,9 @@ async function main() {
           `Dashboard:    ${chalk.dim("/dashboard")}`,
           `Orchestrator: ${chalk.dim("floating button in dashboard")}`,
           `Agents:       ${chalk.dim(`${agents.agents.length} active`)}`,
+          ...widgetSnippet,
         ].join("\n"),
-        "Your AI company is ready"
+        mode === "connect" ? "Your AI agents are ready" : "Your AI company is ready"
       );
       p.outro(`Deploy: ${chalk.cyan("vercel deploy")}`);
     } else if (tier === "cloud") {

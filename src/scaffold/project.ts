@@ -31,6 +31,8 @@ interface ScaffoldOptions {
   site: SiteContent;
   provider: "anthropic" | "openai";
   tier: DeployTier;
+  mode: "new" | "connect";
+  websiteUrl: string;
   infra: {
     anthropicKey: string;
     openaiKey?: string;
@@ -40,7 +42,7 @@ interface ScaffoldOptions {
 }
 
 export async function scaffoldProject(options: ScaffoldOptions): Promise<string> {
-  const { company, agents, site, provider, tier, infra } = options;
+  const { company, agents, site, provider, tier, mode, websiteUrl, infra } = options;
 
   const slug = company.name
     .toLowerCase()
@@ -73,6 +75,12 @@ export async function scaffoldProject(options: ScaffoldOptions): Promise<string>
     await fs.remove(path.join(projectDir, "Dockerfile"));
     await fs.remove(path.join(projectDir, "docker-compose.yml"));
     await fs.remove(path.join(projectDir, "railway.toml"));
+  }
+
+  // Connect mode: remove public site, keep dashboard + API + widget
+  if (mode === "connect") {
+    await fs.remove(path.join(projectDir, "app", "(site)"));
+    await fs.remove(path.join(projectDir, "components", "sections"));
   }
 
   // Ensure directory structure
@@ -134,9 +142,11 @@ export async function scaffoldProject(options: ScaffoldOptions): Promise<string>
       slack: { enabled: false },
       email: { enabled: false },
     },
+    mode,
     storage: "supabase",
     integrations: [],
-    site,
+    ...(websiteUrl ? { websiteUrl } : {}),
+    ...(mode === "new" ? { site } : {}),
   };
 
   await fs.writeJSON(path.join(projectDir, "tellet.json"), telletConfig, {
