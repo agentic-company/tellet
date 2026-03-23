@@ -16,6 +16,13 @@ export interface TelletConfig {
   channels: Record<string, { enabled: boolean }>;
   storage: string;
   integrations: string[];
+  site: {
+    tagline: string;
+    subtitle: string;
+    features: { title: string; description: string; icon: string }[];
+    faq: { question: string; answer: string }[];
+    cta: string;
+  };
 }
 
 let _config: TelletConfig | null = null;

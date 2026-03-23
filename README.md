@@ -1,9 +1,9 @@
-# create-tellet
+# @tellet/create
 
 > Build your AI company in one command.
 
 ```bash
-npx create-tellet
+npx @tellet/create
 ```
 
 tellet is an open-source framework that generates a complete AI-powered company from a business description. No YAML. No config files. AI creates your agent team with tailored system prompts, roles, and models.
@@ -53,7 +53,7 @@ Each agent can use a different LLM provider and model:
 
 ```bash
 # Create your AI company
-npx create-tellet
+npx @tellet/create
 
 # Install and run
 cd your-company

@@ -15,7 +15,7 @@ async function main() {
   );
   console.log();
 
-  p.intro(chalk.bgHex("#8b5cf6").white(" create-tellet "));
+  p.intro(chalk.bgHex("#8b5cf6").white(" @tellet/create "));
 
   // Step 1: Company info
   const company = await p.group(
@@ -46,9 +46,30 @@ async function main() {
     }
   );
 
-  // Step 2: Generate agents with AI
+  // Step 2: Get API key if not in env
+  let anthropicKey = process.env.ANTHROPIC_API_KEY || "";
+  if (!anthropicKey) {
+    const keyInput = await p.text({
+      message: "Your Anthropic API key (needed to generate your AI team):",
+      placeholder: "sk-ant-...",
+      validate: (v) =>
+        !v || !v.startsWith("sk-ant-")
+          ? "Please enter a valid Anthropic API key (starts with sk-ant-)"
+          : undefined,
+    });
+    if (p.isCancel(keyInput)) {
+      p.cancel("Setup cancelled.");
+      process.exit(0);
+    }
+    anthropicKey = keyInput as string;
+    process.env.ANTHROPIC_API_KEY = anthropicKey;
+  } else {
+    p.log.info(chalk.dim("Using ANTHROPIC_API_KEY from environment."));
+  }
+
+  // Step 3: Generate agents + site content with AI
   const s = p.spinner();
-  s.start("Generating your AI team...");
+  s.start("Generating your AI team and website...");
 
   let agents;
   try {
@@ -66,7 +87,7 @@ async function main() {
     process.exit(1);
   }
 
-  // Step 3: Show agents
+  // Step 4: Show agents + site preview
   p.log.info(chalk.bold("Meet your team:"));
   console.log();
   for (const agent of agents.agents) {
@@ -74,6 +95,13 @@ async function main() {
       `  ${chalk.hex("#8b5cf6").bold(agent.name)} ${chalk.dim(`(${agent.role})`)}`
     );
     console.log(`  ${chalk.dim(agent.description)}`);
+    console.log();
+  }
+
+  if (agents.site) {
+    p.log.info(chalk.bold("Your website:"));
+    console.log(`  ${chalk.hex("#f59e0b")(agents.site.tagline)}`);
+    console.log(`  ${chalk.dim(agents.site.subtitle)}`);
     console.log();
   }
 
@@ -87,16 +115,16 @@ async function main() {
     process.exit(0);
   }
 
-  // Step 4: Infrastructure setup
-  const infra = await p.group(
+  // Step 5: Supabase setup
+  p.log.info(
+    `${chalk.bold("Supabase setup")} ${chalk.dim("(free tier works fine)")}\n` +
+    `  ${chalk.dim("1.")} Create a project at ${chalk.cyan("https://supabase.com/dashboard/new")}\n` +
+    `  ${chalk.dim("2.")} Go to Settings → API to find your URL and keys`
+  );
+
+  const supabase = await p.group(
     {
-      anthropicKey: () =>
-        p.text({
-          message: "Your Anthropic API key:",
-          placeholder: "sk-ant-...",
-          validate: (v) => (!v ? "API key is required" : undefined),
-        }),
-      supabaseUrl: () =>
+      url: () =>
         p.text({
           message: "Your Supabase project URL:",
           placeholder: "https://xxx.supabase.co",
@@ -105,9 +133,9 @@ async function main() {
               ? "Please enter a valid Supabase URL"
               : undefined,
         }),
-      supabaseKey: () =>
+      key: () =>
         p.text({
-          message: "Your Supabase publishable key:",
+          message: "Your Supabase publishable key (anon/public):",
           placeholder: "sb_publishable_...",
           validate: (v) => (!v ? "Key is required" : undefined),
         }),
@@ -120,7 +148,7 @@ async function main() {
     }
   );
 
-  // Step 5: Scaffold project
+  // Step 6: Scaffold project
   s.start("Creating your project...");
 
   try {
@@ -131,10 +159,11 @@ async function main() {
         industry: agents.industry,
       },
       agents: agents.agents,
+      site: agents.site,
       infra: {
-        anthropicKey: infra.anthropicKey as string,
-        supabaseUrl: infra.supabaseUrl as string,
-        supabaseKey: infra.supabaseKey as string,
+        anthropicKey,
+        supabaseUrl: supabase.url as string,
+        supabaseKey: supabase.key as string,
       },
     });
 

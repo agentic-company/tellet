@@ -11,6 +11,14 @@ interface AgentConfig {
   model: string;
 }
 
+interface SiteContent {
+  tagline: string;
+  subtitle: string;
+  features: { title: string; description: string; icon: string }[];
+  faq: { question: string; answer: string }[];
+  cta: string;
+}
+
 interface ScaffoldOptions {
   company: {
     name: string;
@@ -18,6 +26,7 @@ interface ScaffoldOptions {
     industry: string;
   };
   agents: AgentConfig[];
+  site: SiteContent;
   infra: {
     anthropicKey: string;
     supabaseUrl: string;
@@ -26,7 +35,7 @@ interface ScaffoldOptions {
 }
 
 export async function scaffoldProject(options: ScaffoldOptions): Promise<string> {
-  const { company, agents, infra } = options;
+  const { company, agents, site, infra } = options;
 
   const slug = company.name
     .toLowerCase()
@@ -103,6 +112,7 @@ export async function scaffoldProject(options: ScaffoldOptions): Promise<string>
     },
     storage: "supabase",
     integrations: [],
+    site,
   };
 
   await fs.writeJSON(path.join(projectDir, "tellet.json"), telletConfig, {
@@ -170,6 +180,7 @@ export default defineAgent({
         "@supabase/supabase-js": "^2.99.0",
         "@supabase/ssr": "^0.9.0",
         tailwindcss: "^4.0.0",
+        "@tailwindcss/postcss": "^4.0.0",
         "framer-motion": "^12.0.0",
         clsx: "^2.1.0",
         "tailwind-merge": "^3.0.0",
@@ -181,6 +192,12 @@ export default defineAgent({
       },
     },
     { spaces: 2 }
+  );
+
+  // Write postcss.config.mjs
+  await fs.writeFile(
+    path.join(projectDir, "postcss.config.mjs"),
+    `/** @type {import('postcss-load-config').Config} */\nconst config = {\n  plugins: {\n    "@tailwindcss/postcss": {},\n  },\n};\n\nexport default config;\n`
   );
 
   // Write DB migration
