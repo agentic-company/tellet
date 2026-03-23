@@ -2,7 +2,7 @@
 
 import * as p from "@clack/prompts";
 import chalk from "chalk";
-import { generateAgents } from "./ai/generate.js";
+import { generateAgents, type Provider } from "./ai/generate.js";
 import { scaffoldProject } from "./scaffold/project.js";
 
 async function main() {
@@ -46,28 +46,93 @@ async function main() {
     }
   );
 
-  // Step 2: Get API key if not in env
-  let anthropicKey = process.env.ANTHROPIC_API_KEY || "";
-  if (!anthropicKey) {
+  // Step 2: Choose AI provider
+  const providerChoice = await p.select({
+    message: "Choose your AI provider:",
+    options: [
+      {
+        value: "anthropic",
+        label: "Anthropic (Claude)",
+        hint: "recommended — also powers the Orchestrator",
+      },
+      {
+        value: "openai",
+        label: "OpenAI (GPT)",
+        hint: "uses gpt-4.1 for generation",
+      },
+    ],
+  });
+
+  if (p.isCancel(providerChoice)) {
+    p.cancel("Setup cancelled.");
+    process.exit(0);
+  }
+
+  const provider = providerChoice as Provider;
+
+  // Step 3: Get API key
+  const envKey =
+    provider === "anthropic"
+      ? process.env.ANTHROPIC_API_KEY
+      : process.env.OPENAI_API_KEY;
+  const envName =
+    provider === "anthropic" ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY";
+  const keyPrefix = provider === "anthropic" ? "sk-ant-" : "sk-";
+  const keyPlaceholder =
+    provider === "anthropic" ? "sk-ant-..." : "sk-...";
+
+  let apiKey = envKey || "";
+  if (!apiKey) {
     const keyInput = await p.text({
-      message: "Your Anthropic API key (needed to generate your AI team):",
-      placeholder: "sk-ant-...",
+      message: `Your ${provider === "anthropic" ? "Anthropic" : "OpenAI"} API key:`,
+      placeholder: keyPlaceholder,
       validate: (v) =>
-        !v || !v.startsWith("sk-ant-")
-          ? "Please enter a valid Anthropic API key (starts with sk-ant-)"
+        !v || !v.startsWith(keyPrefix)
+          ? `Please enter a valid key (starts with ${keyPrefix})`
           : undefined,
     });
     if (p.isCancel(keyInput)) {
       p.cancel("Setup cancelled.");
       process.exit(0);
     }
-    anthropicKey = keyInput as string;
-    process.env.ANTHROPIC_API_KEY = anthropicKey;
+    apiKey = keyInput as string;
+    process.env[envName] = apiKey;
   } else {
-    p.log.info(chalk.dim("Using ANTHROPIC_API_KEY from environment."));
+    p.log.info(chalk.dim(`Using ${envName} from environment.`));
   }
 
-  // Step 3: Generate agents + site content with AI
+  // Orchestrator always needs Anthropic — ask separately if using OpenAI
+  let anthropicKey = "";
+  if (provider === "anthropic") {
+    anthropicKey = apiKey;
+  } else {
+    const existingAnthropicKey = process.env.ANTHROPIC_API_KEY || "";
+    if (existingAnthropicKey) {
+      anthropicKey = existingAnthropicKey;
+      p.log.info(chalk.dim("Using ANTHROPIC_API_KEY for Orchestrator."));
+    } else {
+      p.log.info(
+        chalk.dim(
+          "The Orchestrator requires an Anthropic API key (Claude tool use)."
+        )
+      );
+      const orchKeyInput = await p.text({
+        message: "Anthropic API key for Orchestrator:",
+        placeholder: "sk-ant-...",
+        validate: (v) =>
+          !v || !v.startsWith("sk-ant-")
+            ? "Please enter a valid Anthropic key (starts with sk-ant-)"
+            : undefined,
+      });
+      if (p.isCancel(orchKeyInput)) {
+        p.cancel("Setup cancelled.");
+        process.exit(0);
+      }
+      anthropicKey = orchKeyInput as string;
+    }
+  }
+
+  // Step 4: Generate agents + site content with AI
   const s = p.spinner();
   s.start("Generating your AI team and website...");
 
@@ -75,7 +140,8 @@ async function main() {
   try {
     agents = await generateAgents(
       company.name as string,
-      company.description as string
+      company.description as string,
+      provider
     );
     s.stop("Your AI team is ready!");
   } catch (err) {
@@ -160,8 +226,10 @@ async function main() {
       },
       agents: agents.agents,
       site: agents.site,
+      provider,
       infra: {
         anthropicKey,
+        openaiKey: provider === "openai" ? apiKey : undefined,
         supabaseUrl: supabase.url as string,
         supabaseKey: supabase.key as string,
       },

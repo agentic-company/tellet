@@ -1,4 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
+
+export type Provider = "anthropic" | "openai";
 
 interface GeneratedAgent {
   id: string;
@@ -28,21 +31,27 @@ interface SiteContent {
   cta: string;
 }
 
-interface GenerateResult {
+export interface GenerateResult {
   industry: string;
   summary: string;
   agents: GeneratedAgent[];
   site: SiteContent;
 }
 
-const SYSTEM_PROMPT = `You are an AI company architect. Given a business description, generate a team of AI agents AND website content tailored for that specific business.
+function buildSystemPrompt(provider: Provider): string {
+  const modelExamples =
+    provider === "anthropic"
+      ? 'use "claude-haiku-4-5" for high-volume simple tasks (CS), "claude-sonnet-4-6" for creative/complex tasks (marketing, sales)'
+      : 'use "gpt-4.1-mini" for high-volume simple tasks (CS), "gpt-4.1" for creative/complex tasks (marketing, sales)';
+
+  return `You are an AI company architect. Given a business description, generate a team of AI agents AND website content tailored for that specific business.
 
 Rules for AGENTS:
 1. Generate 3-5 agents appropriate for the business
 2. Always include a customer_support agent
 3. Each agent needs a unique, memorable name related to the business theme
 4. Each system_prompt must be detailed (200+ words) and specific to THIS business — include the company name, products, customer demographics, tone of voice
-5. Assign appropriate models: use "claude-haiku-4-5" for high-volume simple tasks (CS), "claude-sonnet-4-6" for creative/complex tasks (marketing, sales)
+5. Assign appropriate models: ${modelExamples}
 6. The id should be lowercase, no spaces
 
 Rules for SITE CONTENT:
@@ -63,7 +72,7 @@ Output ONLY valid JSON matching this schema:
       "role": "string — one of: customer_support, marketing, sales, operations, development, analytics",
       "description": "string — one sentence",
       "systemPrompt": "string — detailed system prompt",
-      "model": "string — claude-haiku-4-5 or claude-sonnet-4-6"
+      "model": "string"
     }
   ],
   "site": {
@@ -78,17 +87,17 @@ Output ONLY valid JSON matching this schema:
     "cta": "string"
   }
 }`;
+}
 
-export async function generateAgents(
+async function generateWithAnthropic(
   companyName: string,
   businessDescription: string
-): Promise<GenerateResult> {
-  const anthropic = new Anthropic();
-
-  const message = await anthropic.messages.create({
+): Promise<string> {
+  const client = new Anthropic();
+  const message = await client.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 8192,
-    system: SYSTEM_PROMPT,
+    system: buildSystemPrompt("anthropic"),
     messages: [
       {
         role: "user",
@@ -96,9 +105,37 @@ export async function generateAgents(
       },
     ],
   });
+  return message.content[0].type === "text" ? message.content[0].text : "";
+}
 
+async function generateWithOpenAI(
+  companyName: string,
+  businessDescription: string
+): Promise<string> {
+  const client = new OpenAI();
+  const response = await client.chat.completions.create({
+    model: "gpt-4.1",
+    max_tokens: 8192,
+    messages: [
+      { role: "system", content: buildSystemPrompt("openai") },
+      {
+        role: "user",
+        content: `Company: ${companyName}\n\nBusiness Description: ${businessDescription}`,
+      },
+    ],
+  });
+  return response.choices[0]?.message?.content || "";
+}
+
+export async function generateAgents(
+  companyName: string,
+  businessDescription: string,
+  provider: Provider = "anthropic"
+): Promise<GenerateResult> {
   const text =
-    message.content[0].type === "text" ? message.content[0].text : "";
+    provider === "openai"
+      ? await generateWithOpenAI(companyName, businessDescription)
+      : await generateWithAnthropic(companyName, businessDescription);
 
   // Extract JSON from response (handle markdown code blocks)
   const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, text];
@@ -124,8 +161,6 @@ export async function generateAgents(
 
     return result;
   } catch {
-    throw new Error(
-      "Failed to parse AI response. Please try again."
-    );
+    throw new Error("Failed to parse AI response. Please try again.");
   }
 }

@@ -1,13 +1,17 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { LLMProvider, StreamParams, StreamChunk } from "./index";
 
-const client = new Anthropic();
+let _client: Anthropic | null = null;
+function getClient() {
+  if (!_client) _client = new Anthropic();
+  return _client;
+}
 
 export const anthropicProvider: LLMProvider = {
   id: "anthropic",
 
   async stream(params: StreamParams): Promise<ReadableStream<StreamChunk>> {
-    const stream = client.messages.stream({
+    const stream = getClient().messages.stream({
       model: params.model,
       max_tokens: params.maxTokens || 2048,
       system: params.system,

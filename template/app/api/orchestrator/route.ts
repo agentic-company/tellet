@@ -3,7 +3,11 @@ import { orchestratorTools } from "@/lib/orchestrator/tools";
 import { executeTool } from "@/lib/orchestrator/executor";
 import { getConfig } from "@/lib/tellet";
 
-const client = new Anthropic();
+let _client: Anthropic | null = null;
+function getClient() {
+  if (!_client) _client = new Anthropic();
+  return _client;
+}
 
 function buildSystemPrompt(): string {
   const config = getConfig();
@@ -49,7 +53,7 @@ export async function POST(request: Request) {
 
         // Agentic loop — keep running until no more tool calls
         while (true) {
-          const response = await client.messages.create({
+          const response = await getClient().messages.create({
             model: "claude-sonnet-4-6",
             max_tokens: 4096,
             system: buildSystemPrompt(),

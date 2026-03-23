@@ -5,7 +5,7 @@ import { SiteIcon } from "./Icons";
 import config from "../../tellet.json";
 
 export function Features() {
-  const features = config.site.features;
+  const features = config.site.features as { title: string; description: string; icon: string }[];
   if (!features || features.length === 0) return null;
 
   return (

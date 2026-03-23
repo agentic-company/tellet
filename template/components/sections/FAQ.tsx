@@ -46,7 +46,7 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
 }
 
 export function FAQ() {
-  const faq = config.site.faq;
+  const faq = config.site.faq as { question: string; answer: string }[];
   if (!faq || faq.length === 0) return null;
 
   return (

@@ -27,15 +27,17 @@ interface ScaffoldOptions {
   };
   agents: AgentConfig[];
   site: SiteContent;
+  provider: "anthropic" | "openai";
   infra: {
     anthropicKey: string;
+    openaiKey?: string;
     supabaseUrl: string;
     supabaseKey: string;
   };
 }
 
 export async function scaffoldProject(options: ScaffoldOptions): Promise<string> {
-  const { company, agents, site, infra } = options;
+  const { company, agents, site, provider, infra } = options;
 
   const slug = company.name
     .toLowerCase()
@@ -94,8 +96,8 @@ export async function scaffoldProject(options: ScaffoldOptions): Promise<string>
     },
     engine: "default",
     llm: {
-      provider: "anthropic",
-      defaultModel: "claude-sonnet-4-6",
+      provider,
+      defaultModel: provider === "openai" ? "gpt-4.1" : "claude-sonnet-4-6",
       fallback: null,
     },
     agents: agents.map((a) => ({
@@ -120,13 +122,20 @@ export async function scaffoldProject(options: ScaffoldOptions): Promise<string>
   });
 
   // Write .env.local
+  const envLines = [
+    `# Orchestrator (always Anthropic)`,
+    `ANTHROPIC_API_KEY=${infra.anthropicKey}`,
+  ];
+  if (infra.openaiKey) {
+    envLines.push(`OPENAI_API_KEY=${infra.openaiKey}`);
+  }
+  envLines.push(
+    `NEXT_PUBLIC_SUPABASE_URL=${infra.supabaseUrl}`,
+    `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${infra.supabaseKey}`
+  );
   await fs.writeFile(
     path.join(projectDir, ".env.local"),
-    [
-      `ANTHROPIC_API_KEY=${infra.anthropicKey}`,
-      `NEXT_PUBLIC_SUPABASE_URL=${infra.supabaseUrl}`,
-      `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${infra.supabaseKey}`,
-    ].join("\n") + "\n"
+    envLines.join("\n") + "\n"
   );
 
   // Write agent files
@@ -177,6 +186,7 @@ export default defineAgent({
         react: "^19.2.0",
         "react-dom": "^19.2.0",
         "@anthropic-ai/sdk": "^0.80.0",
+        openai: "^6.32.0",
         "@supabase/supabase-js": "^2.99.0",
         "@supabase/ssr": "^0.9.0",
         tailwindcss: "^4.0.0",

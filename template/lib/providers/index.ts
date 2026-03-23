@@ -21,9 +21,11 @@ export interface LLMProvider {
 }
 
 import { anthropicProvider } from "./anthropic";
+import { openaiProvider } from "./openai";
 
 const providers: Record<string, LLMProvider> = {
   anthropic: anthropicProvider,
+  openai: openaiProvider,
 };
 
 export function getProvider(id?: string): LLMProvider {
