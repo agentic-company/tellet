@@ -1,10 +1,10 @@
 {
   "name": "@tellet/create",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Build your AI company in one command",
   "type": "module",
   "bin": {
-    "tellet-create": "dist/index.js"
+    "create": "dist/index.js"
   },
   "files": [
     "dist",
