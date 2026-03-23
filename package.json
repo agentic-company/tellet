@@ -1,7 +1,7 @@
 {
   "name": "@tellet/create",
   "version": "1.0.0",
-  "description": "Build your AI company in one command",
+  "description": "The open-source platform for running an Agentic Company",
   "type": "module",
   "bin": {
     "create": "dist/index.js"
@@ -20,7 +20,12 @@
     "agent",
     "agentic-company",
     "tellet",
-    "cli"
+    "cli",
+    "orchestrator",
+    "mcp",
+    "knowledge-base",
+    "ai-agents",
+    "no-code"
   ],
   "license": "MIT",
   "repository": {
