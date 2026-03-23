@@ -166,4 +166,80 @@ export const orchestratorTools: Anthropic.Tool[] = [
       required: ["document_id"],
     },
   },
+  {
+    name: "run_agent_task",
+    description:
+      "Run a specific agent with a task immediately. Use this when the owner asks to have an agent do something right now.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        agent_id: {
+          type: "string",
+          description: "The agent ID to run",
+        },
+        task: {
+          type: "string",
+          description: "The task description for the agent",
+        },
+      },
+      required: ["agent_id", "task"],
+    },
+  },
+  {
+    name: "manage_schedule",
+    description:
+      "Enable or disable scheduled tasks for an agent. Updates tellet.json.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        agent_id: {
+          type: "string",
+          description: "The agent ID",
+        },
+        enabled: {
+          type: "boolean",
+          description: "Enable or disable the schedule",
+        },
+        cron: {
+          type: "string",
+          description: "Cron expression (e.g. '0 9 * * *' for daily at 9am)",
+        },
+        task: {
+          type: "string",
+          description: "The recurring task description",
+        },
+      },
+      required: ["agent_id", "enabled"],
+    },
+  },
+  {
+    name: "list_available_tools",
+    description:
+      "List all tools available in the tellet marketplace that can be installed.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "install_tool",
+    description:
+      "Install a tool from the marketplace and assign it to agents. Updates tellet.json. The owner will need to set the required API key in .env.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        tool_id: {
+          type: "string",
+          description: "Tool ID from the marketplace (e.g. 'stripe', 'email', 'github')",
+        },
+        agent_ids: {
+          type: "array",
+          items: { type: "string" },
+          description: "Agent IDs to assign this tool to",
+        },
+      },
+      required: ["tool_id"],
+    },
+  },
 ];

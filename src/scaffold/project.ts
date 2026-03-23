@@ -259,13 +259,13 @@ export default defineAgent({
   // Write DB migration
   await fs.writeFile(
     path.join(projectDir, "supabase", "migrations", "001_initial.sql"),
-    generateMigration(agents)
+    generateMigration(agents, company)
   );
 
   return projectDir;
 }
 
-function generateMigration(agents: AgentConfig[]): string {
+function generateMigration(agents: AgentConfig[], company: { name: string; description: string; industry: string }): string {
   const seedValues = agents
     .map(
       (a) =>
@@ -275,11 +275,25 @@ function generateMigration(agents: AgentConfig[]): string {
 
   return `-- tellet schema
 
+-- Companies (multi-company support)
+create table companies (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  description text,
+  industry text,
+  config jsonb default '{}',
+  created_at timestamptz default now()
+);
+
+insert into companies (id, name, description, industry) values
+('00000000-0000-0000-0000-000000000001', ${pgEscape(company.name)}, ${pgEscape(company.description)}, ${pgEscape(company.industry)});
+
 -- Knowledge Base (pgvector)
 create extension if not exists vector;
 
 create table documents (
   id uuid primary key default gen_random_uuid(),
+  company_id uuid references companies(id) default '00000000-0000-0000-0000-000000000001',
   title text not null,
   content text not null,
   embedding vector(1536),
@@ -310,6 +324,7 @@ $$;
 -- Core tables
 create table agents (
   id text primary key,
+  company_id uuid references companies(id) default '00000000-0000-0000-0000-000000000001',
   name text not null,
   role text not null,
   system_prompt text not null,
@@ -354,8 +369,12 @@ create index idx_activity_agent on activity_log(agent_id);
 create index idx_activity_time on activity_log(created_at desc);
 
 -- RLS
+alter table companies enable row level security;
 alter table documents enable row level security;
 alter table agents enable row level security;
+
+create policy "auth_all" on companies for all to authenticated using (true) with check (true);
+create policy "anon_read_companies" on companies for select to anon using (true);
 alter table conversations enable row level security;
 alter table messages enable row level security;
 alter table activity_log enable row level security;
