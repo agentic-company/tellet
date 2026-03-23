@@ -3,7 +3,7 @@
 import * as p from "@clack/prompts";
 import chalk from "chalk";
 import { generateAgents, type Provider } from "./ai/generate.js";
-import { scaffoldProject } from "./scaffold/project.js";
+import { scaffoldProject, type DeployTier } from "./scaffold/project.js";
 
 async function main() {
   console.clear();
@@ -46,7 +46,40 @@ async function main() {
     }
   );
 
-  // Step 2: Choose AI provider
+  // Step 2: Deployment tier
+  const tierChoice = await p.select({
+    message: "Deployment mode:",
+    options: [
+      {
+        value: "quickstart",
+        label: "Quick Start",
+        hint: "Vercel + Supabase — free, instant deploy",
+      },
+      {
+        value: "cloud",
+        label: "Cloud",
+        hint: "Railway / Render / Fly.io — Docker, $5-20/mo",
+      },
+      {
+        value: "enterprise",
+        label: "Enterprise",
+        hint: "AWS / GCP — full infrastructure (coming soon)",
+      },
+    ],
+  });
+
+  if (p.isCancel(tierChoice)) {
+    p.cancel("Setup cancelled.");
+    process.exit(0);
+  }
+
+  const tier = tierChoice as DeployTier;
+
+  if (tier === "enterprise") {
+    p.log.warn("Enterprise mode (AWS/GCP) is coming soon. Using Cloud mode for now.");
+  }
+
+  // Step 3: Choose AI provider
   const providerChoice = await p.select({
     message: "Choose your AI provider:",
     options: [
@@ -70,7 +103,7 @@ async function main() {
 
   const provider = providerChoice as Provider;
 
-  // Step 3: Get API key
+  // Step 4: Get API key
   const envKey =
     provider === "anthropic"
       ? process.env.ANTHROPIC_API_KEY
@@ -78,8 +111,7 @@ async function main() {
   const envName =
     provider === "anthropic" ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY";
   const keyPrefix = provider === "anthropic" ? "sk-ant-" : "sk-";
-  const keyPlaceholder =
-    provider === "anthropic" ? "sk-ant-..." : "sk-...";
+  const keyPlaceholder = provider === "anthropic" ? "sk-ant-..." : "sk-...";
 
   let apiKey = envKey || "";
   if (!apiKey) {
@@ -101,20 +133,18 @@ async function main() {
     p.log.info(chalk.dim(`Using ${envName} from environment.`));
   }
 
-  // Orchestrator always needs Anthropic — ask separately if using OpenAI
+  // Orchestrator always needs Anthropic
   let anthropicKey = "";
   if (provider === "anthropic") {
     anthropicKey = apiKey;
   } else {
-    const existingAnthropicKey = process.env.ANTHROPIC_API_KEY || "";
-    if (existingAnthropicKey) {
-      anthropicKey = existingAnthropicKey;
+    const existingKey = process.env.ANTHROPIC_API_KEY || "";
+    if (existingKey) {
+      anthropicKey = existingKey;
       p.log.info(chalk.dim("Using ANTHROPIC_API_KEY for Orchestrator."));
     } else {
       p.log.info(
-        chalk.dim(
-          "The Orchestrator requires an Anthropic API key (Claude tool use)."
-        )
+        chalk.dim("The Orchestrator requires an Anthropic API key (Claude tool use).")
       );
       const orchKeyInput = await p.text({
         message: "Anthropic API key for Orchestrator:",
@@ -132,7 +162,7 @@ async function main() {
     }
   }
 
-  // Step 4: Generate agents + site content with AI
+  // Step 5: Generate agents + site content
   const s = p.spinner();
   s.start("Generating your AI team and website...");
 
@@ -146,14 +176,12 @@ async function main() {
     s.stop("Your AI team is ready!");
   } catch (err) {
     s.stop("Failed to generate agents.");
-    p.log.error(
-      err instanceof Error ? err.message : "Check your ANTHROPIC_API_KEY"
-    );
+    p.log.error(err instanceof Error ? err.message : "Check your API key");
     p.cancel("Setup failed.");
     process.exit(1);
   }
 
-  // Step 4: Show agents + site preview
+  // Step 6: Show agents + site preview
   p.log.info(chalk.bold("Meet your team:"));
   console.log();
   for (const agent of agents.agents) {
@@ -181,40 +209,51 @@ async function main() {
     process.exit(0);
   }
 
-  // Step 5: Supabase setup
-  p.log.info(
-    `${chalk.bold("Supabase setup")} ${chalk.dim("(free tier works fine)")}\n` +
-    `  ${chalk.dim("1.")} Create a project at ${chalk.cyan("https://supabase.com/dashboard/new")}\n` +
-    `  ${chalk.dim("2.")} Go to Settings → API to find your URL and keys`
-  );
+  // Step 7: Infrastructure setup (tier-dependent)
+  let supabaseUrl = "";
+  let supabaseKey = "";
 
-  const supabase = await p.group(
-    {
-      url: () =>
-        p.text({
-          message: "Your Supabase project URL:",
-          placeholder: "https://xxx.supabase.co",
-          validate: (v) =>
-            !v || !v.includes("supabase")
-              ? "Please enter a valid Supabase URL"
-              : undefined,
-        }),
-      key: () =>
-        p.text({
-          message: "Your Supabase publishable key (anon/public):",
-          placeholder: "sb_publishable_...",
-          validate: (v) => (!v ? "Key is required" : undefined),
-        }),
-    },
-    {
-      onCancel: () => {
-        p.cancel("Setup cancelled.");
-        process.exit(0);
+  if (tier === "quickstart") {
+    p.log.info(
+      `${chalk.bold("Supabase setup")} ${chalk.dim("(free tier works fine)")}\n` +
+        `  ${chalk.dim("1.")} Create a project at ${chalk.cyan("https://supabase.com/dashboard/new")}\n` +
+        `  ${chalk.dim("2.")} Go to Settings → API to find your URL and keys`
+    );
+
+    const supabase = await p.group(
+      {
+        url: () =>
+          p.text({
+            message: "Your Supabase project URL:",
+            placeholder: "https://xxx.supabase.co",
+            validate: (v) =>
+              !v || !v.includes("supabase")
+                ? "Please enter a valid Supabase URL"
+                : undefined,
+          }),
+        key: () =>
+          p.text({
+            message: "Your Supabase publishable key (anon/public):",
+            placeholder: "sb_publishable_...",
+            validate: (v) => (!v ? "Key is required" : undefined),
+          }),
       },
-    }
-  );
+      {
+        onCancel: () => {
+          p.cancel("Setup cancelled.");
+          process.exit(0);
+        },
+      }
+    );
+    supabaseUrl = supabase.url as string;
+    supabaseKey = supabase.key as string;
+  } else {
+    p.log.info(
+      chalk.dim("Cloud mode: PostgreSQL runs in Docker. No Supabase needed.")
+    );
+  }
 
-  // Step 6: Scaffold project
+  // Step 8: Scaffold project
   s.start("Creating your project...");
 
   try {
@@ -227,11 +266,12 @@ async function main() {
       agents: agents.agents,
       site: agents.site,
       provider,
+      tier: tier === "enterprise" ? "cloud" : tier,
       infra: {
         anthropicKey,
         openaiKey: provider === "openai" ? apiKey : undefined,
-        supabaseUrl: supabase.url as string,
-        supabaseKey: supabase.key as string,
+        supabaseUrl,
+        supabaseKey,
       },
     });
 
@@ -242,22 +282,44 @@ async function main() {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "");
 
-    p.note(
-      [
-        `cd ${slug}`,
-        `npm install`,
-        `npm run dev        ${chalk.dim("→ http://localhost:3000")}`,
-        ``,
-        `Dashboard:    ${chalk.dim("/dashboard")}`,
-        `Chat Widget:  ${chalk.dim("Embedded on homepage")}`,
-        `Agents:       ${chalk.dim(`${agents.agents.length} active`)}`,
-      ].join("\n"),
-      "Your AI company is ready"
-    );
-
-    p.outro(
-      `Next: ${chalk.cyan("vercel deploy")} to go live`
-    );
+    if (tier === "quickstart") {
+      p.note(
+        [
+          `cd ${slug}`,
+          `npm install`,
+          `npm run dev        ${chalk.dim("→ http://localhost:3000")}`,
+          ``,
+          `Dashboard:    ${chalk.dim("/dashboard")}`,
+          `Orchestrator: ${chalk.dim("floating button in dashboard")}`,
+          `Agents:       ${chalk.dim(`${agents.agents.length} active`)}`,
+        ].join("\n"),
+        "Your AI company is ready"
+      );
+      p.outro(`Deploy: ${chalk.cyan("vercel deploy")}`);
+    } else {
+      p.note(
+        [
+          `cd ${slug}`,
+          ``,
+          `${chalk.bold("Local development:")}`,
+          `docker compose up     ${chalk.dim("→ http://localhost:3000")}`,
+          ``,
+          `${chalk.bold("Deploy to Railway:")}`,
+          `railway login`,
+          `railway init`,
+          `railway add --plugin postgresql`,
+          `railway up`,
+          ``,
+          `Dashboard:    ${chalk.dim("/dashboard")}`,
+          `Orchestrator: ${chalk.dim("floating button in dashboard")}`,
+          `Agents:       ${chalk.dim(`${agents.agents.length} active`)}`,
+        ].join("\n"),
+        "Your AI company is ready"
+      );
+      p.outro(
+        `Or deploy to ${chalk.cyan("Render")}, ${chalk.cyan("Fly.io")}, or any Docker host`
+      );
+    }
   } catch (err) {
     s.stop("Failed to create project.");
     p.log.error(err instanceof Error ? err.message : String(err));

@@ -19,6 +19,8 @@ interface SiteContent {
   cta: string;
 }
 
+export type DeployTier = "quickstart" | "cloud" | "enterprise";
+
 interface ScaffoldOptions {
   company: {
     name: string;
@@ -28,6 +30,7 @@ interface ScaffoldOptions {
   agents: AgentConfig[];
   site: SiteContent;
   provider: "anthropic" | "openai";
+  tier: DeployTier;
   infra: {
     anthropicKey: string;
     openaiKey?: string;
@@ -37,7 +40,7 @@ interface ScaffoldOptions {
 }
 
 export async function scaffoldProject(options: ScaffoldOptions): Promise<string> {
-  const { company, agents, site, provider, infra } = options;
+  const { company, agents, site, provider, tier, infra } = options;
 
   const slug = company.name
     .toLowerCase()
@@ -128,7 +131,7 @@ export async function scaffoldProject(options: ScaffoldOptions): Promise<string>
     spaces: 2,
   });
 
-  // Write .env.local
+  // Write environment file
   const envLines = [
     `# Orchestrator (always Anthropic)`,
     `ANTHROPIC_API_KEY=${infra.anthropicKey}`,
@@ -136,12 +139,20 @@ export async function scaffoldProject(options: ScaffoldOptions): Promise<string>
   if (infra.openaiKey) {
     envLines.push(`OPENAI_API_KEY=${infra.openaiKey}`);
   }
-  envLines.push(
-    `NEXT_PUBLIC_SUPABASE_URL=${infra.supabaseUrl}`,
-    `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${infra.supabaseKey}`
-  );
+  if (tier === "quickstart") {
+    envLines.push(
+      `NEXT_PUBLIC_SUPABASE_URL=${infra.supabaseUrl}`,
+      `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${infra.supabaseKey}`
+    );
+  } else {
+    envLines.push(
+      `DATABASE_URL=postgresql://tellet:tellet@localhost:5432/tellet`,
+      `# For Railway: use the DATABASE_URL from Railway dashboard`
+    );
+  }
+  const envFileName = tier === "cloud" ? ".env" : ".env.local";
   await fs.writeFile(
-    path.join(projectDir, ".env.local"),
+    path.join(projectDir, envFileName),
     envLines.join("\n") + "\n"
   );
 
