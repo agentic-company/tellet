@@ -191,5 +191,5 @@ MIT
 ## Links
 
 - [tellet.com](https://tellet.com) — Website
-- [GitHub](https://github.com/agentic-company/create-tellet) — Source code
+- [GitHub](https://github.com/agentic-company/tellet) — Source code
 - [npm](https://www.npmjs.com/package/@tellet/create) — Package
