@@ -1,4 +1,4 @@
-# @tellet/create
+# Tell it. Let it.
 
 > The open-source platform for running an Agentic Company.
 
