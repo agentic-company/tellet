@@ -2,7 +2,7 @@ import * as p from "@clack/prompts";
 import chalk from "chalk";
 import fs from "fs-extra";
 import path from "path";
-import { loadConfig, saveConfig } from "./shared.js";
+import { loadConfigOrExit, saveConfig } from "./shared.js";
 
 const VALID_ROLES = [
   "customer_support",
@@ -36,7 +36,7 @@ export default async function agent(args: string[]) {
 }
 
 async function agentList() {
-  const config = await loadConfig();
+  const config = await loadConfigOrExit();
 
   console.log();
   console.log(
@@ -58,7 +58,7 @@ async function agentList() {
 }
 
 async function agentAdd() {
-  const config = await loadConfig();
+  const config = await loadConfigOrExit();
 
   console.log();
   p.intro(chalk.bgHex("#8b5cf6").white(" Add Agent "));
@@ -147,7 +147,7 @@ export default defineAgent({
 }
 
 async function agentRemove(idArg?: string) {
-  const config = await loadConfig();
+  const config = await loadConfigOrExit();
 
   if (config.agents.length === 0) {
     p.log.error("No agents to remove.");

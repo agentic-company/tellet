@@ -8,6 +8,7 @@ const COMMANDS: Record<string, { description: string; module: string }> = {
   status: { description: "Show project status", module: "./commands/status.js" },
   agent: { description: "Manage agents (list, add, remove)", module: "./commands/agent.js" },
   deploy: { description: "Deploy your project", module: "./commands/deploy.js" },
+  mcp: { description: "Start MCP server (for Claude Code / Cursor)", module: "./commands/mcp.js" },
 };
 
 function printBanner() {

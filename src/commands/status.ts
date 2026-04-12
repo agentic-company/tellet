@@ -1,10 +1,10 @@
 import chalk from "chalk";
 import fs from "fs-extra";
 import path from "path";
-import { loadConfig } from "./shared.js";
+import { loadConfigOrExit } from "./shared.js";
 
 export default async function status(_args: string[]) {
-  const config = await loadConfig();
+  const config = await loadConfigOrExit();
 
   console.log();
   console.log(

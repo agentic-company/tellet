@@ -1,10 +1,10 @@
 import { spawnSync } from "child_process";
 import * as p from "@clack/prompts";
 import chalk from "chalk";
-import { loadConfig } from "./shared.js";
+import { loadConfigOrExit } from "./shared.js";
 
 export default async function deploy(_args: string[]) {
-  const config = await loadConfig();
+  const config = await loadConfigOrExit();
 
   console.log();
   console.log(

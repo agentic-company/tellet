@@ -1,9 +1,9 @@
 import { spawnSync } from "child_process";
 import chalk from "chalk";
-import { loadConfig } from "./shared.js";
+import { loadConfigOrExit } from "./shared.js";
 
 export default async function build(_args: string[]) {
-  const config = await loadConfig();
+  const config = await loadConfigOrExit();
 
   console.log();
   console.log(

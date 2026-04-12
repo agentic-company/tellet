@@ -28,8 +28,39 @@ tellet agent list       # List all agents
 tellet agent add        # Add a new agent interactively
 tellet agent remove     # Remove an agent
 tellet deploy           # Guided deployment (Vercel, Railway, Docker, AWS)
+tellet mcp              # Start MCP server (for Claude Code / Cursor)
 tellet help             # Show all commands
 ```
+
+## MCP Server (Claude Code / Cursor / Codex)
+
+Use tellet from Claude Code, Cursor, or any MCP-compatible AI tool:
+
+```json
+{
+  "mcpServers": {
+    "tellet": {
+      "command": "npx",
+      "args": ["@tellet/create", "mcp"],
+      "cwd": "/path/to/your-tellet-project"
+    }
+  }
+}
+```
+
+Available MCP tools:
+
+| Tool | Description |
+|------|-------------|
+| `project_status` | Company info, agents, channels, environment health |
+| `agent_list` | List all agents with details |
+| `agent_add` | Add a new agent (name, role, description) |
+| `agent_remove` | Remove an agent by ID |
+| `config_read` | Read full tellet.json |
+| `dev_start` | Start Next.js dev server |
+| `deploy_info` | Show deployment options |
+
+Then just ask your AI: *"Add a marketing agent called Nova"* or *"Show me the project status"*.
 
 ## What agents can do
 

@@ -33,12 +33,25 @@ export interface TelletConfig {
 }
 
 /**
- * Load tellet.json from CWD or throw with helpful message.
+ * Load tellet.json from CWD. Throws if not found.
  */
 export async function loadConfig(): Promise<TelletConfig> {
   const configPath = path.resolve(process.cwd(), "tellet.json");
 
   if (!(await fs.pathExists(configPath))) {
+    throw new Error("No tellet.json found in current directory.");
+  }
+
+  return fs.readJSON(configPath);
+}
+
+/**
+ * Load tellet.json from CWD with pretty error + exit (for CLI commands only).
+ */
+export async function loadConfigOrExit(): Promise<TelletConfig> {
+  try {
+    return await loadConfig();
+  } catch {
     console.error(
       chalk.red("  No tellet.json found in current directory.\n") +
         chalk.dim("  Run this command from inside a tellet project, or create one:\n") +
@@ -46,8 +59,6 @@ export async function loadConfig(): Promise<TelletConfig> {
     );
     process.exit(1);
   }
-
-  return fs.readJSON(configPath);
 }
 
 /**
