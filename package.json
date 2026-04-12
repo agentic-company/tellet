@@ -1,10 +1,11 @@
 {
   "name": "@tellet/create",
-  "version": "0.10.0",
-  "description": "AI agents that run your business — email, delegate, schedule, embed. One command.",
+  "version": "0.11.0",
+  "description": "AI agents that run your business — create, manage, and deploy. One CLI.",
   "type": "module",
   "bin": {
-    "create": "dist/index.js"
+    "create": "dist/index.js",
+    "tellet": "dist/index.js"
   },
   "files": [
     "dist",

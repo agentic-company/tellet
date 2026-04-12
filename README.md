@@ -1,6 +1,6 @@
 # Tell it. Let it.
 
-> AI agents that run your business — email, delegate, schedule, embed.
+> AI agents that run your business — create, manage, and deploy. One CLI.
 
 ```bash
 npx @tellet/create
@@ -11,6 +11,25 @@ Or start instantly at [tellet.com](https://tellet.com) — no setup required.
 ---
 
 tellet generates an AI agent team for your business. Agents don't just chat — they send emails, delegate tasks to each other, run scheduled automations, and serve customers through an embeddable widget.
+
+## CLI commands
+
+After creating a project, manage it with the `tellet` CLI:
+
+```bash
+# Install globally (optional — or use npx @tellet/create <command>)
+npm i -g @tellet/create
+
+# Inside your tellet project:
+tellet dev              # Start dev server
+tellet build            # Build for production
+tellet status           # Show project info
+tellet agent list       # List all agents
+tellet agent add        # Add a new agent interactively
+tellet agent remove     # Remove an agent
+tellet deploy           # Guided deployment (Vercel, Railway, Docker, AWS)
+tellet help             # Show all commands
+```
 
 ## What agents can do
 
