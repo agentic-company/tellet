@@ -269,7 +269,7 @@ function generateMigration(agents: AgentConfig[], company: { name: string; descr
   const seedValues = agents
     .map(
       (a) =>
-        `('${a.id}', '${a.name}', '${a.role}', ${pgEscape(a.systemPrompt)}, '${a.model}', 'active', '{}')`
+        `(${pgEscape(a.id)}, ${pgEscape(a.name)}, ${pgEscape(a.role)}, ${pgEscape(a.systemPrompt)}, ${pgEscape(a.model)}, 'active', '{}')`
     )
     .join(",\n");
 

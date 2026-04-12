@@ -4,6 +4,8 @@ import * as p from "@clack/prompts";
 import chalk from "chalk";
 import { generateAgents, type Provider } from "./ai/generate.js";
 import { scaffoldProject, type DeployTier } from "./scaffold/project.js";
+import { setupSupabase } from "./setup/supabase.js";
+import { installDependencies } from "./setup/deps.js";
 
 async function main() {
   console.clear();
@@ -242,43 +244,16 @@ async function main() {
   }
 
   // Step 7b: Infrastructure setup (tier-dependent)
+  // For quickstart: we'll collect Supabase info now, but may override
+  // with automated setup after scaffolding
   let supabaseUrl = "";
   let supabaseKey = "";
+  let useAutomatedSupabase = false;
 
   if (tier === "quickstart") {
-    p.log.info(
-      `${chalk.bold("Supabase setup")} ${chalk.dim("(free tier works fine)")}\n` +
-        `  ${chalk.dim("1.")} Create a project at ${chalk.cyan("https://supabase.com/dashboard/new")}\n` +
-        `  ${chalk.dim("2.")} Go to Settings → API to find your URL and keys`
-    );
-
-    const supabase = await p.group(
-      {
-        url: () =>
-          p.text({
-            message: "Your Supabase project URL:",
-            placeholder: "https://xxx.supabase.co",
-            validate: (v) =>
-              !v || !v.includes("supabase")
-                ? "Please enter a valid Supabase URL"
-                : undefined,
-          }),
-        key: () =>
-          p.text({
-            message: "Your Supabase publishable key (anon/public):",
-            placeholder: "sb_publishable_...",
-            validate: (v) => (!v ? "Key is required" : undefined),
-          }),
-      },
-      {
-        onCancel: () => {
-          p.cancel("Setup cancelled.");
-          process.exit(0);
-        },
-      }
-    );
-    supabaseUrl = supabase.url as string;
-    supabaseKey = supabase.key as string;
+    // We'll handle Supabase setup after scaffold for CLI automation
+    // For now, just mark that we need it
+    useAutomatedSupabase = true;
   } else if (tier === "cloud") {
     p.log.info(
       chalk.dim("Cloud mode: PostgreSQL runs in Docker. No Supabase needed.")
@@ -293,6 +268,11 @@ async function main() {
 
   // Step 8: Scaffold project
   s.start("Creating your project...");
+
+  const slug = (company.name as string)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 
   try {
     const projectDir = await scaffoldProject({
@@ -310,17 +290,144 @@ async function main() {
       infra: {
         anthropicKey,
         openaiKey: provider === "openai" ? apiKey : undefined,
-        supabaseUrl,
-        supabaseKey,
+        supabaseUrl: supabaseUrl || "PLACEHOLDER",
+        supabaseKey: supabaseKey || "PLACEHOLDER",
       },
     });
 
     s.stop("Project created!");
 
-    const slug = (company.name as string)
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "");
+    // ─────────────────────────────────────────────────────────
+    // Post-scaffold automation
+    // ─────────────────────────────────────────────────────────
+
+    // Step 9: Supabase setup (quickstart only)
+    if (tier === "quickstart" && useAutomatedSupabase) {
+      const result = await setupSupabase(projectDir);
+
+      if (result.method === "local" && result.credentials) {
+        // Auto-detected credentials from local Supabase
+        supabaseUrl = result.credentials.url;
+        supabaseKey = result.credentials.anonKey;
+
+        // Rewrite .env.local with real credentials
+        const { writeEnvFile } = await import("./setup/env.js");
+        await writeEnvFile(projectDir, {
+          anthropicKey,
+          openaiKey: provider === "openai" ? apiKey : undefined,
+          supabaseUrl,
+          supabaseKey,
+          serviceRoleKey: result.credentials.serviceRoleKey,
+        });
+
+        p.log.success(
+          chalk.green("Supabase configured automatically!") +
+            chalk.dim(` → ${supabaseUrl}`)
+        );
+      } else if (result.method === "remote") {
+        // Remote linked — user needs to provide URL/key for .env
+        p.log.info(
+          chalk.dim(
+            "Project linked. Get your URL and key from Settings → API."
+          )
+        );
+
+        const supabase = await p.group(
+          {
+            url: () =>
+              p.text({
+                message: "Your Supabase project URL:",
+                placeholder: "https://xxx.supabase.co",
+                validate: (v) =>
+                  !v || !v.includes("supabase")
+                    ? "Please enter a valid Supabase URL"
+                    : undefined,
+              }),
+            key: () =>
+              p.text({
+                message: "Your Supabase publishable key (anon/public):",
+                placeholder: "sb_publishable_...",
+                validate: (v) => (!v ? "Key is required" : undefined),
+              }),
+          },
+          {
+            onCancel: () => {
+              p.cancel("Setup cancelled.");
+              process.exit(0);
+            },
+          }
+        );
+
+        supabaseUrl = supabase.url as string;
+        supabaseKey = supabase.key as string;
+
+        const { writeEnvFile } = await import("./setup/env.js");
+        await writeEnvFile(projectDir, {
+          anthropicKey,
+          openaiKey: provider === "openai" ? apiKey : undefined,
+          supabaseUrl,
+          supabaseKey,
+        });
+      } else {
+        // Manual fallback — same as before
+        p.log.info(
+          `${chalk.bold("Supabase setup")} ${chalk.dim("(free tier works fine)")}\n` +
+            `  ${chalk.dim("1.")} Create a project at ${chalk.cyan("https://supabase.com/dashboard/new")}\n` +
+            `  ${chalk.dim("2.")} Go to Settings → API to find your URL and keys`
+        );
+
+        const supabase = await p.group(
+          {
+            url: () =>
+              p.text({
+                message: "Your Supabase project URL:",
+                placeholder: "https://xxx.supabase.co",
+                validate: (v) =>
+                  !v || !v.includes("supabase")
+                    ? "Please enter a valid Supabase URL"
+                    : undefined,
+              }),
+            key: () =>
+              p.text({
+                message: "Your Supabase publishable key (anon/public):",
+                placeholder: "sb_publishable_...",
+                validate: (v) => (!v ? "Key is required" : undefined),
+              }),
+          },
+          {
+            onCancel: () => {
+              p.cancel("Setup cancelled.");
+              process.exit(0);
+            },
+          }
+        );
+
+        supabaseUrl = supabase.url as string;
+        supabaseKey = supabase.key as string;
+
+        const { writeEnvFile } = await import("./setup/env.js");
+        await writeEnvFile(projectDir, {
+          anthropicKey,
+          openaiKey: provider === "openai" ? apiKey : undefined,
+          supabaseUrl,
+          supabaseKey,
+        });
+      }
+    }
+
+    // Step 10: Install dependencies
+    const installConfirm = await p.confirm({
+      message: "Install dependencies now? (npm install)",
+      initialValue: true,
+    });
+
+    if (!p.isCancel(installConfirm) && installConfirm) {
+      await installDependencies(projectDir);
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // Final output
+    // ─────────────────────────────────────────────────────────
 
     const widgetSnippet = mode === "connect"
       ? [
@@ -332,12 +439,14 @@ async function main() {
         ]
       : [];
 
+    const didInstall = !p.isCancel(installConfirm) && installConfirm === true;
+    const devCmd = didInstall ? "npm run dev" : "npm install && npm run dev";
+
     if (tier === "quickstart") {
       p.note(
         [
           `cd ${slug}`,
-          `npm install`,
-          `npm run dev        ${chalk.dim("→ http://localhost:3000")}`,
+          `${devCmd}        ${chalk.dim("→ http://localhost:3000")}`,
           ``,
           `Dashboard:    ${chalk.dim("/dashboard")}`,
           `Orchestrator: ${chalk.dim("floating button in dashboard")}`,
