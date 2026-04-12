@@ -3,7 +3,14 @@ import { z } from "zod";
 import fs from "fs-extra";
 import path from "path";
 import { spawn } from "child_process";
-import { loadConfig, saveConfig, type TelletConfig } from "../commands/shared.js";
+import {
+  loadConfig,
+  saveConfig,
+  nameToId,
+  generateAgentFile,
+  updateAgentRegistry,
+  type TelletConfig,
+} from "../commands/shared.js";
 
 const VALID_ROLES = [
   "customer_support",
@@ -105,10 +112,14 @@ export function registerTools(server: McpServer) {
       const config = await tryLoadConfig();
       if (!config) return configError();
 
-      const id = name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "_")
-        .replace(/^_|_$/g, "");
+      const id = nameToId(name);
+
+      if (!id) {
+        return {
+          content: [{ type: "text" as const, text: "Error: Name must contain at least one letter or number." }],
+          isError: true,
+        };
+      }
 
       if (config.agents.some((a) => a.id === id)) {
         return {
@@ -131,12 +142,12 @@ export function registerTools(server: McpServer) {
 
       await saveConfig(config);
 
-      // Write agent file
-      const agentFile = `import { defineAgent } from "@/lib/engine";\n\nexport default defineAgent({\n  id: "${id}",\n  name: "${name}",\n  role: "${role}",\n  model: "${model}",\n  systemPrompt: ${JSON.stringify(systemPrompt)},\n  channels: ["web_chat"],\n  tools: [],\n});\n`;
-
       const agentsDir = path.resolve(process.cwd(), "agents");
       await fs.mkdirp(agentsDir);
-      await fs.writeFile(path.join(agentsDir, `${id}.ts`), agentFile);
+      await fs.writeFile(
+        path.join(agentsDir, `${id}.ts`),
+        generateAgentFile({ id, name, role, model, systemPrompt })
+      );
 
       await updateAgentRegistry(config);
 
@@ -223,14 +234,35 @@ export function registerTools(server: McpServer) {
     {
       title: "Start Dev Server",
       description:
-        "Start the Next.js development server (next dev). Returns immediately after launching — the server runs in the background.",
+        "Start the Next.js development server (next dev). Launches in the background — success means the process was spawned, not that the server is healthy.",
       inputSchema: z.object({
-        port: z.number().optional().describe("Port number (default: 3000)"),
+        port: z
+          .number()
+          .int()
+          .min(1024)
+          .max(65535)
+          .optional()
+          .describe("Port number (default: 3000)"),
       }),
     },
     async ({ port }) => {
       const config = await tryLoadConfig();
       if (!config) return configError();
+
+      const nodeModules = await fs.pathExists(
+        path.resolve(process.cwd(), "node_modules")
+      );
+      if (!nodeModules) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "Error: node_modules not found. Run npm install first.",
+            },
+          ],
+          isError: true,
+        };
+      }
 
       const args = ["next", "dev"];
       if (port) args.push("--port", String(port));
@@ -247,7 +279,7 @@ export function registerTools(server: McpServer) {
         content: [
           {
             type: "text" as const,
-            text: `Dev server starting for ${config.company.name} on http://localhost:${actualPort}\nPID: ${child.pid}`,
+            text: `Dev server spawned for ${config.company.name} on http://localhost:${actualPort}\nPID: ${child.pid}\nNote: Check the port is not already in use.`,
           },
         ],
       };
@@ -343,19 +375,4 @@ function configError() {
     ],
     isError: true,
   };
-}
-
-async function updateAgentRegistry(config: TelletConfig) {
-  const agentsDir = path.resolve(process.cwd(), "agents");
-  const indexPath = path.join(agentsDir, "index.ts");
-
-  const imports = config.agents
-    .map((a) => `import ${a.id} from "./${a.id}.js";`)
-    .join("\n");
-  const exports = config.agents.map((a) => `  ${a.id}`).join(",\n");
-
-  await fs.writeFile(
-    indexPath,
-    `${imports}\n\nexport const agents = {\n${exports},\n};\n`
-  );
 }

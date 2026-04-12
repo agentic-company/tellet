@@ -2,7 +2,13 @@ import * as p from "@clack/prompts";
 import chalk from "chalk";
 import fs from "fs-extra";
 import path from "path";
-import { loadConfigOrExit, saveConfig } from "./shared.js";
+import {
+  loadConfigOrExit,
+  saveConfig,
+  nameToId,
+  generateAgentFile,
+  updateAgentRegistry,
+} from "./shared.js";
 
 const VALID_ROLES = [
   "customer_support",
@@ -24,7 +30,7 @@ export default async function agent(args: string[]) {
       return agentAdd();
     case "remove":
     case "rm":
-      return agentRemove(args[1]);
+      return agentRemove(args.slice(1));
     default:
       console.log();
       console.log(chalk.bold("  Usage:"));
@@ -69,7 +75,12 @@ async function agentAdd() {
         p.text({
           message: "Agent name:",
           placeholder: "Luna",
-          validate: (v) => (!v ? "Name is required" : undefined),
+          validate: (v) => {
+            if (!v) return "Name is required";
+            const id = nameToId(v);
+            if (!id) return "Name must contain at least one letter or number";
+            return undefined;
+          },
         }),
       role: () =>
         p.select({
@@ -95,13 +106,8 @@ async function agentAdd() {
   const role = info.role as string;
   const description = info.description as string;
 
-  // Generate ID from name
-  const id = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_|_$/g, "");
+  const id = nameToId(name);
 
-  // Check for duplicate
   if (config.agents.some((a) => a.id === id)) {
     p.log.error(`Agent with ID "${id}" already exists.`);
     process.exit(1);
@@ -110,7 +116,6 @@ async function agentAdd() {
   const model = config.llm.defaultModel;
   const systemPrompt = `You are ${name}, the ${role.replace(/_/g, " ")} agent for ${config.company.name}. ${description}`;
 
-  // Add to tellet.json
   config.agents.push({
     id,
     name,
@@ -122,32 +127,23 @@ async function agentAdd() {
 
   await saveConfig(config);
 
-  // Write agent file
-  const agentFile = `import { defineAgent } from "@/lib/engine";
-
-export default defineAgent({
-  id: "${id}",
-  name: "${name}",
-  role: "${role}",
-  model: "${model}",
-  systemPrompt: ${JSON.stringify(systemPrompt)},
-  channels: ["web_chat"],
-  tools: [],
-});
-`;
   const agentsDir = path.resolve(process.cwd(), "agents");
   await fs.mkdirp(agentsDir);
-  await fs.writeFile(path.join(agentsDir, `${id}.ts`), agentFile);
+  await fs.writeFile(
+    path.join(agentsDir, `${id}.ts`),
+    generateAgentFile({ id, name, role, model, systemPrompt })
+  );
 
-  // Update agents/index.ts
   await updateAgentRegistry(config);
 
   p.log.success(`Added ${chalk.bold(name)} (${role})`);
   p.outro(chalk.dim(`Agent file: agents/${id}.ts`));
 }
 
-async function agentRemove(idArg?: string) {
+async function agentRemove(args: string[]) {
   const config = await loadConfigOrExit();
+  const force = args.includes("--yes") || args.includes("-y");
+  const idArg = args.find((a) => !a.startsWith("-"));
 
   if (config.agents.length === 0) {
     p.log.error("No agents to remove.");
@@ -179,43 +175,27 @@ async function agentRemove(idArg?: string) {
     process.exit(1);
   }
 
-  const confirm = await p.confirm({
-    message: `Remove ${agent.name} (${agent.role})?`,
-    initialValue: false,
-  });
+  if (!force) {
+    const confirm = await p.confirm({
+      message: `Remove ${agent.name} (${agent.role})?`,
+      initialValue: false,
+    });
 
-  if (p.isCancel(confirm) || !confirm) {
-    p.cancel("Cancelled.");
-    return;
+    if (p.isCancel(confirm) || !confirm) {
+      p.cancel("Cancelled.");
+      return;
+    }
   }
 
-  // Remove from config
   config.agents = config.agents.filter((a) => a.id !== targetId);
   await saveConfig(config);
 
-  // Remove agent file
   const agentPath = path.resolve(process.cwd(), "agents", `${targetId}.ts`);
   if (await fs.pathExists(agentPath)) {
     await fs.remove(agentPath);
   }
 
-  // Update registry
   await updateAgentRegistry(config);
 
   p.log.success(`Removed ${chalk.bold(agent.name)}`);
-}
-
-async function updateAgentRegistry(config: { agents: { id: string }[] }) {
-  const agentsDir = path.resolve(process.cwd(), "agents");
-  const indexPath = path.join(agentsDir, "index.ts");
-
-  const imports = config.agents
-    .map((a) => `import ${a.id} from "./${a.id}.js";`)
-    .join("\n");
-  const exports = config.agents.map((a) => `  ${a.id}`).join(",\n");
-
-  await fs.writeFile(
-    indexPath,
-    `${imports}\n\nexport const agents = {\n${exports},\n};\n`
-  );
 }

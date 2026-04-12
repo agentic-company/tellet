@@ -1,13 +1,23 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { z } from "zod";
+import fs from "fs-extra";
+import path from "path";
+import { fileURLToPath } from "url";
 import { registerTools } from "./tools.js";
 
+async function getVersion(): Promise<string> {
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const pkg = await fs.readJSON(path.resolve(__dirname, "..", "..", "package.json"));
+  return pkg.version;
+}
+
 export async function startMcpServer() {
+  const version = await getVersion();
+
   const server = new McpServer(
     {
       name: "tellet",
-      version: "0.11.0",
+      version,
     },
     {
       instructions:

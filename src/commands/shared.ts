@@ -70,11 +70,54 @@ export async function saveConfig(config: TelletConfig): Promise<void> {
 }
 
 /**
- * Require that CWD is a tellet project (has tellet.json).
+ * Normalize a display name to a safe identifier.
+ * Returns empty string if input has no alphanumeric characters.
  */
-export function requireProject(fn: (args: string[]) => Promise<void>) {
-  return async (args: string[]) => {
-    await loadConfig(); // validates existence, exits if missing
-    return fn(args);
-  };
+export function nameToId(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+}
+
+/**
+ * Generate an agent .ts file with properly escaped values.
+ */
+export function generateAgentFile(agent: {
+  id: string;
+  name: string;
+  role: string;
+  model: string;
+  systemPrompt: string;
+}): string {
+  return `import { defineAgent } from "@/lib/engine";
+
+export default defineAgent({
+  id: ${JSON.stringify(agent.id)},
+  name: ${JSON.stringify(agent.name)},
+  role: ${JSON.stringify(agent.role)},
+  model: ${JSON.stringify(agent.model)},
+  systemPrompt: ${JSON.stringify(agent.systemPrompt)},
+  channels: ["web_chat"],
+  tools: [],
+});
+`;
+}
+
+/**
+ * Rewrite agents/index.ts registry to match config.
+ */
+export async function updateAgentRegistry(config: { agents: { id: string }[] }): Promise<void> {
+  const agentsDir = path.resolve(process.cwd(), "agents");
+  const indexPath = path.join(agentsDir, "index.ts");
+
+  const imports = config.agents
+    .map((a) => `import ${a.id} from "./${a.id}.js";`)
+    .join("\n");
+  const exports = config.agents.map((a) => `  ${a.id}`).join(",\n");
+
+  await fs.writeFile(
+    indexPath,
+    `${imports}\n\nexport const agents = {\n${exports},\n};\n`
+  );
 }
