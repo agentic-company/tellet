@@ -4,7 +4,6 @@
   "description": "AI agents that run your business — email, delegate, schedule, embed. One command.",
   "type": "module",
   "bin": {
-    "create-tellet": "dist/index.js",
     "create": "dist/index.js"
   },
   "files": [
